@@ -13,8 +13,38 @@ from threading import Lock
 app = Flask(__name__)
 
 # Configuration
-DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), 'downloads')
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+# For Vercel: use /tmp (read-only filesystem)
+# For local/other platforms: use downloads directory
+# IMPORTANT: Don't create directories at import time for Vercel
+DOWNLOAD_DIR = None
+
+def get_download_dir():
+    """Lazy initialization of download directory"""
+    global DOWNLOAD_DIR
+    if DOWNLOAD_DIR is not None:
+        return DOWNLOAD_DIR
+    
+    # Check if we're on Vercel (read-only filesystem)
+    if os.path.exists('/var/task'):
+        # We're on Vercel - use /tmp
+        DOWNLOAD_DIR = '/tmp'
+        return DOWNLOAD_DIR
+    
+    # Local or other platforms
+    if os.path.exists('/tmp') and os.access('/tmp', os.W_OK):
+        DOWNLOAD_DIR = '/tmp/downloads'
+        try:
+            os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        except (OSError, PermissionError):
+            DOWNLOAD_DIR = '/tmp'
+    else:
+        DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), 'downloads')
+        try:
+            os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        except (OSError, PermissionError):
+            DOWNLOAD_DIR = '/tmp'
+    
+    return DOWNLOAD_DIR
 
 # Cache configuration
 CACHE_TTL = 3600  # 1 hour
@@ -33,9 +63,16 @@ def cleanup_old_files():
     if current_time - last_cleanup < CLEANUP_INTERVAL:
         return
     
+    download_dir = get_download_dir()
+    
+    # Skip cleanup on Vercel (read-only filesystem)
+    if not os.access(download_dir, os.W_OK):
+        return
+    
     try:
-        for filename in os.listdir(DOWNLOAD_DIR):
-            filepath = os.path.join(DOWNLOAD_DIR, filename)
+        if os.path.exists(download_dir) and os.path.isdir(download_dir):
+            for filename in os.listdir(download_dir):
+                filepath = os.path.join(download_dir, filename)
             if os.path.isfile(filepath):
                 file_age = current_time - os.path.getmtime(filepath)
                 if file_age > CLEANUP_INTERVAL:
@@ -323,7 +360,8 @@ def download_video():
             filename = f"{title}.mp4"
         
         # Download video
-        temp_file = os.path.join(DOWNLOAD_DIR, filename)
+        download_dir = get_download_dir()
+        temp_file = os.path.join(download_dir, filename)
         
         cmd = [
             'yt-dlp',
