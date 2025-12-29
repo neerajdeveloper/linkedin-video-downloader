@@ -9,14 +9,17 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import Vercel-compatible Flask app
-from app_vercel import app
+try:
+    from app_vercel import app
+except ImportError as e:
+    # Fallback error handling
+    from flask import Flask
+    app = Flask(__name__)
+    
+    @app.route('/')
+    def error():
+        return f"Import error: {str(e)}. Please check app_vercel.py", 500
 
-# Vercel serverless function handler
-# This is the entry point Vercel will use
-def handler(request):
-    """Vercel serverless function handler"""
-    return app(request.environ, request.start_response)
-
-# Export app for Vercel
-__all__ = ['app', 'handler']
+# Vercel expects the app to be exported directly
+# The @vercel/python runtime automatically wraps Flask apps
 
