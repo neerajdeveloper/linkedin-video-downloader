@@ -26,17 +26,19 @@ app = Flask(__name__, template_folder=template_dir)
 
 # Configuration for Vercel (use /tmp for serverless)
 # Vercel has read-only filesystem, so we can't create directories
-# Only use /tmp if it exists and is writable
-if os.path.exists('/tmp') and os.access('/tmp', os.W_OK):
-    DOWNLOAD_DIR = '/tmp/downloads'
-    try:
-        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    except (OSError, PermissionError):
-        # If we can't create it, just use /tmp directly
-        DOWNLOAD_DIR = '/tmp'
-else:
-    # Fallback: don't create directory, just use a placeholder
+# IMPORTANT: Don't create directories at import time
+DOWNLOAD_DIR = None
+
+def get_download_dir():
+    """Lazy initialization of download directory for Vercel"""
+    global DOWNLOAD_DIR
+    if DOWNLOAD_DIR is not None:
+        return DOWNLOAD_DIR
+    
+    # Always use /tmp on Vercel (read-only filesystem)
+    # Don't try to create subdirectories
     DOWNLOAD_DIR = '/tmp'
+    return DOWNLOAD_DIR
 
 # Cache configuration
 CACHE_TTL = 3600  # 1 hour
@@ -55,14 +57,16 @@ def cleanup_old_files():
     if current_time - last_cleanup < CLEANUP_INTERVAL:
         return
     
+    download_dir = get_download_dir()
+    
     # Skip cleanup on Vercel (read-only filesystem)
-    if not os.access(DOWNLOAD_DIR, os.W_OK):
+    if not os.access(download_dir, os.W_OK):
         return
     
     try:
-        if os.path.exists(DOWNLOAD_DIR) and os.path.isdir(DOWNLOAD_DIR):
-            for filename in os.listdir(DOWNLOAD_DIR):
-                filepath = os.path.join(DOWNLOAD_DIR, filename)
+        if os.path.exists(download_dir) and os.path.isdir(download_dir):
+            for filename in os.listdir(download_dir):
+                filepath = os.path.join(download_dir, filename)
                 if os.path.isfile(filepath):
                     file_age = current_time - os.path.getmtime(filepath)
                     if file_age > CLEANUP_INTERVAL:
