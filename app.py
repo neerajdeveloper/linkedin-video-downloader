@@ -1,3 +1,7 @@
+"""
+LOCAL DEVELOPMENT ONLY - DO NOT USE ON VERCEL
+This file is for local development. Vercel uses app_vercel.py via api/index.py
+"""
 from flask import Flask, render_template, request, jsonify, send_file, Response
 import subprocess
 import json
