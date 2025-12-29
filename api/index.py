@@ -12,13 +12,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from app_vercel import app
 except ImportError as e:
-    # Fallback error handling
+    # Better error handling for Vercel
+    import traceback
+    error_msg = f"Import error: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+    print(error_msg)  # This will show in Vercel logs
+    
     from flask import Flask
     app = Flask(__name__)
     
     @app.route('/')
     def error():
-        return f"Import error: {str(e)}. Please check app_vercel.py", 500
+        return f"<h1>Import Error</h1><pre>{error_msg}</pre>", 500
+    
+    @app.route('/<path:path>')
+    def catch_all(path):
+        return f"<h1>Import Error</h1><pre>{error_msg}</pre>", 500
 
 # Vercel expects the app to be exported directly
 # The @vercel/python runtime automatically wraps Flask apps

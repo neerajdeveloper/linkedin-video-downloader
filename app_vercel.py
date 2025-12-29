@@ -20,11 +20,23 @@ except ImportError:
     YT_DLP_AVAILABLE = False
     print("Warning: yt-dlp not available. Install with: pip install yt-dlp")
 
-app = Flask(__name__)
+# Set template folder path for Vercel
+template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+app = Flask(__name__, template_folder=template_dir)
 
 # Configuration for Vercel (use /tmp for serverless)
-DOWNLOAD_DIR = '/tmp/downloads' if os.path.exists('/tmp') else os.path.join(os.path.dirname(__file__), 'downloads')
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+# Vercel has read-only filesystem, so we can't create directories
+# Only use /tmp if it exists and is writable
+if os.path.exists('/tmp') and os.access('/tmp', os.W_OK):
+    DOWNLOAD_DIR = '/tmp/downloads'
+    try:
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    except (OSError, PermissionError):
+        # If we can't create it, just use /tmp directly
+        DOWNLOAD_DIR = '/tmp'
+else:
+    # Fallback: don't create directory, just use a placeholder
+    DOWNLOAD_DIR = '/tmp'
 
 # Cache configuration
 CACHE_TTL = 3600  # 1 hour
@@ -43,16 +55,25 @@ def cleanup_old_files():
     if current_time - last_cleanup < CLEANUP_INTERVAL:
         return
     
+    # Skip cleanup on Vercel (read-only filesystem)
+    if not os.access(DOWNLOAD_DIR, os.W_OK):
+        return
+    
     try:
-        for filename in os.listdir(DOWNLOAD_DIR):
-            filepath = os.path.join(DOWNLOAD_DIR, filename)
-            if os.path.isfile(filepath):
-                file_age = current_time - os.path.getmtime(filepath)
-                if file_age > CLEANUP_INTERVAL:
-                    os.remove(filepath)
+        if os.path.exists(DOWNLOAD_DIR) and os.path.isdir(DOWNLOAD_DIR):
+            for filename in os.listdir(DOWNLOAD_DIR):
+                filepath = os.path.join(DOWNLOAD_DIR, filename)
+                if os.path.isfile(filepath):
+                    file_age = current_time - os.path.getmtime(filepath)
+                    if file_age > CLEANUP_INTERVAL:
+                        try:
+                            os.remove(filepath)
+                        except (OSError, PermissionError):
+                            pass
         last_cleanup = current_time
-    except Exception as e:
-        print(f"Cleanup error: {e}")
+    except Exception:
+        # Silently fail on Vercel
+        pass
 
 def get_cache_key(url):
     """Generate cache key from URL"""
@@ -69,8 +90,14 @@ def get_video_info_optimized(url):
     """
     OPTIMIZED: Uses yt-dlp Python API instead of subprocess
     """
+    # Try to import yt-dlp if not available
+    global YT_DLP_AVAILABLE
     if not YT_DLP_AVAILABLE:
-        return None, "yt-dlp Python package not available. Please install: pip install yt-dlp"
+        try:
+            import yt_dlp
+            YT_DLP_AVAILABLE = True
+        except ImportError:
+            return None, "yt-dlp Python package not available. Please install: pip install yt-dlp"
     
     cache_key = get_cache_key(url)
     
@@ -87,10 +114,17 @@ def get_video_info_optimized(url):
             'format': 'best[ext=mp4]/best',
             'quiet': True,
             'no_warnings': True,
+            'extract_flat': False,
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            try:
+                info = ydl.extract_info(url, download=False)
+            except Exception as e:
+                # Better error message for debugging
+                error_msg = f"yt-dlp extraction failed: {str(e)}"
+                print(error_msg)  # Will show in Vercel logs
+                return None, error_msg
             
             # Extract video URL
             video_url = info.get('url')
@@ -213,4 +247,6 @@ def download_proxy():
 if __name__ == '__main__':
     debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     app.run(debug=debug_mode, host='0.0.0.0', port=5001)
+
+
 

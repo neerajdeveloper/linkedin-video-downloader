@@ -13,12 +13,24 @@
     }
   ],
   "env": {
-    "FLASK_DEBUG": "false"
+    "FLASK_DEBUG": "false",
+    "PYTHONUNBUFFERED": "1"
   },
   "functions": {
     "api/index.py": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "memory": 1024
     }
-  }
+  },
+  "ignore": [
+    "app.py",
+    "app_local.py",
+    "app_backup.py",
+    "app_optimized.py",
+    "downloads/",
+    "venv/",
+    "*.mp4",
+    "*.webm"
+  ]
 }
 

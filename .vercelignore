@@ -1,0 +1,12 @@
+app.py
+app_local.py
+app_backup.py
+app_optimized.py
+downloads/
+*.mp4
+*.webm
+venv/
+__pycache__/
+*.pyc
+.git/
+node_modules/
